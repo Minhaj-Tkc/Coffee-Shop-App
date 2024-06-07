@@ -1,22 +1,116 @@
 import React, { useState, useEffect } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View, Alert, ActivityIndicator } from 'react-native';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
-library.add(fas);
 import { FontAwesomeIcon } from "@fortawesome/react-native-fontawesome";
 import { launchImageLibrary } from 'react-native-image-picker';
+import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { CLOUDINARY_URL, CLOUDINARY_UPLOAD_PRESET } from '../../cloudinaryConfig';
+import { BASE_URL } from '../../config';
+
+library.add(fas);
+
 const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-    const [profileImage, setProfileImage] = useState(require('../assets/app_images/minhaj.png'));
+    const [profileImage, setProfileImage] = useState(require('../assets/app_images/profile.png'));
+    const [loading, setLoading] = useState(false);
+    const [firstName, setFirstName] = useState<string>('');
+    const [lastName, setLastName] = useState<string>('');
+    const [username, setUsername] = useState<string>('');
+
+    useEffect(() => {
+        const fetchProfileData = async () => {
+            const token = await AsyncStorage.getItem('access_token');
+            if (!token) {
+                Alert.alert('Error', 'User not authenticated.');
+                navigation.navigate('Login');
+                return;
+            }
+
+            try {
+                const response = await axios.get(`${BASE_URL}/api/users/me/`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+                const { first_name, last_name, username, profile_image } = response.data;
+                setFirstName(first_name);
+                setLastName(last_name);
+                setUsername(username);
+                if (profile_image) {
+                    setProfileImage({ uri: profile_image });
+                }
+            } catch (error) {
+                console.error('Error fetching profile data:', error);
+                Alert.alert('Error', 'Failed to load profile data.');
+            }
+        };
+
+        fetchProfileData();
+    }, []);
 
     const handleChoosePhoto = () => {
-        launchImageLibrary({ mediaType: 'photo' }, (response) => {
-            if (response.assets) {
+        launchImageLibrary({ mediaType: 'photo' }, async (response) => {
+            if (response.didCancel) {
+                console.log('User cancelled image picker');
+            } else if (response.errorCode) {
+                console.log('ImagePicker Error: ', response.errorMessage);
+            } else if (response.assets) {
                 const selectedImage = response.assets[0];
                 setProfileImage({ uri: selectedImage.uri });
-            } else if (response.errorMessage) {
-                Alert.alert('Error', response.errorMessage);
+
+                // Upload the image to Cloudinary
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: selectedImage.uri,
+                    type: selectedImage.type,
+                    name: selectedImage.fileName,
+                });
+                formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+                setLoading(true);
+
+                try {
+                    const cloudinaryResponse = await axios.post(CLOUDINARY_URL, formData, {
+                        headers: {
+                            'Content-Type': 'multipart/form-data',
+                        },
+                    });
+
+                    const imageUrl = cloudinaryResponse.data.secure_url;
+                    console.log('Image uploaded to Cloudinary:', imageUrl);
+
+                    // Refresh the profile image
+                    setProfileImage({ uri: imageUrl });
+
+                    const token = await AsyncStorage.getItem('access_token');
+                    if (!token) {
+                        Alert.alert('Error', 'User not authenticated.');
+                        navigation.navigate('Login');
+                        return;
+                    }
+
+                    // Save the image URL in the backend
+                    const backendResponse = await axios.patch(
+                        `${BASE_URL}/api/users/profile-picture/`,
+                        {
+                            profile_image: imageUrl,
+                        },
+                        {
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                            },
+                        }
+                    );
+
+                    console.log('Image URL saved in backend:', backendResponse.data);
+                } catch (err) {
+                    console.error('Error uploading image:', err);
+                    Alert.alert('Error', 'Failed to upload image.');
+                } finally {
+                    setLoading(false);
+                }
             }
         });
     };
@@ -36,19 +130,25 @@ const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                     />
                 </View>
             </TouchableOpacity>
-            <Text style={styles.nameText}>Minhaj Tkc</Text>
-            <Text style={styles.usernameText}>@minhaj</Text>
-            <TouchableOpacity style={styles.logoutButton} onPress={() => {
-                navigation.navigate('Login');
-            }}>
-                <FontAwesomeIcon
-                    icon='right-from-bracket'
-                    size={20}
-                    color='#d0d0d0'
-                    style={{ marginRight: 12 }}
-                />
-                <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
+            <Text style={styles.nameText}>{`${firstName} ${lastName}`}</Text>
+            <Text style={styles.usernameText}>@{username}</Text>
+            {loading ? (
+                <ActivityIndicator size="large" color="#0000ff" />
+            ) : (
+                <TouchableOpacity style={styles.logoutButton} onPress={async () => {
+                    await AsyncStorage.removeItem('access_token');
+                    await AsyncStorage.removeItem('refresh_token');
+                    navigation.navigate('Login');
+                }}>
+                    <FontAwesomeIcon
+                        icon='right-from-bracket'
+                        size={20}
+                        color='#d0d0d0'
+                        style={{ marginRight: 12 }}
+                    />
+                    <Text style={styles.logoutText}>Logout</Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 };

@@ -4,50 +4,79 @@ import {
     KeyboardAvoidingView,
     SafeAreaView,
     Text,
-    TouchableWithoutFeedback,
     View,
+    TouchableWithoutFeedback,
     StyleSheet,
-    StatusBar
+    StatusBar,
+    Alert,
+    ActivityIndicator,
 } from "react-native";
-import Title from "../components/Title";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Input from "../components/Input";
 import Button from "../components/Button";
 import { COLORS } from "../theme/theme";
+import axios from "axios";
+import { BASE_URL } from "../../config";
+
 
 const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+    const [username, setUsername] = useState<string>('');
+    const [password, setPassword] = useState<string>('');
+    const [usernameError, setUsernameError] = useState<string>('');
+    const [passwordError, setPasswordError] = useState<string>('');
+    const [loading, setLoading] = useState<boolean>(false);
 
-    const [usernameError, setUsernameError] = useState('');
-    const [passwordError, setPasswordError] = useState('');
-
-    // Function to handle login
-    const onSignIn = () => {
+    const onSignIn = async () => {
         // Reset previous errors
         setUsernameError('');
         setPasswordError('');
 
         // Validation checks
-        const failUsername = !username;
-        if (failUsername) {
+        let hasError = false;
+        if (!username) {
             setUsernameError('Username not provided');
+            hasError = true;
         }
-        const failPassword = !password;
-        if (failPassword) {
+        if (!password) {
             setPasswordError('Password not provided');
+            hasError = true;
         }
-        if (failUsername || failPassword) {
-            console.log('Validation failed', { failUsername, failPassword });
+        if (hasError) {
             return;
         }
 
-        // Log validation success
-        console.log('Validation passed:', { username, password });
+        setLoading(true);
 
-        navigation.navigate('Tab')
+        try {
+            const response = await axios.post(`${BASE_URL}/api/users/login/`, {
+                username,
+                password,
+            });
 
-        // Normally here you would send the login request to the backend
-        // but this code has been removed as per your request.
+            console.log('API Response:', response.data); // Debug log
+
+            const accessToken = response.data.access;
+            const refreshToken = response.data.refresh;
+
+            if (accessToken && refreshToken) {
+                await AsyncStorage.setItem('access_token', accessToken);
+                await AsyncStorage.setItem('refresh_token', refreshToken);
+                Alert.alert('Success', 'Logged in successfully!');
+                navigation.navigate('Tab');
+            } else {
+                Alert.alert('Error', 'Token is missing in the response.');
+            }
+        } catch (err) {
+            console.error('Error during login:', err);
+            if (axios.isAxiosError(err) && err.response) {
+                console.error('Error response data:', err.response.data);
+                Alert.alert('Error', err.response.data.error || 'Failed to login.');
+            } else {
+                Alert.alert('Error', 'Failed to login.');
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -56,8 +85,7 @@ const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             <KeyboardAvoidingView behavior="height" style={styles.keyboardAvoidingContainer}>
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <View style={styles.innerContainer}>
-                        <Title text='The Coffee Shop' color='#202020' />
-
+                        <Text style={styles.title}>Login</Text>
                         <Input
                             title='Username'
                             value={username}
@@ -65,7 +93,6 @@ const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                             setValue={setUsername}
                             setError={setUsernameError}
                         />
-
                         <Input
                             title='Password'
                             value={password}
@@ -74,27 +101,26 @@ const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                             setError={setPasswordError}
                             secureTextEntry={true}
                         />
-
-                        <Button
-                            title='Sign In'
-                            onPress={onSignIn}
-                        />
-
+                        {loading ? (
+                            <ActivityIndicator size="large" color={COLORS.primaryBlackHex} />
+                        ) : (
+                            <Button title='Sign In' onPress={onSignIn} />
+                        )}
                         <Text style={styles.signUpText}>
-                            Don't have an account? <Text
+                            Don't have an account?
+                            <Text
                                 style={styles.signUpLink}
                                 onPress={() => navigation.navigate('Signup')}
                             >
                                 Sign Up
                             </Text>
                         </Text>
-
                     </View>
                 </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
-}
+};
 
 const styles = StyleSheet.create({
     container: {
@@ -107,6 +133,12 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         paddingHorizontal: 20,
+    },
+    title: {
+        textAlign: 'center',
+        marginBottom: 24,
+        fontSize: 36,
+        color: '#202020',
     },
     signUpText: {
         textAlign: 'center',
