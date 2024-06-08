@@ -14,10 +14,9 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Input from "../components/Input";
 import Button from "../components/Button";
-import { COLORS } from "../theme/theme";
+import { COLORS, FONTFAMILY } from "../theme/theme";
 import axios from "axios";
 import { BASE_URL } from "../../config";
-
 
 interface SignUpScreenProps {
     navigation: any;
@@ -98,13 +97,15 @@ const SignupScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
             console.log('API Response:', response.data); // Debug log
 
             const accessToken = response.data.access;
+            const refreshToken = response.data.refresh;
 
-            if (accessToken) {
-                await AsyncStorage.setItem('token', accessToken);
+            if (accessToken && refreshToken) {
+                await AsyncStorage.setItem('access_token', accessToken);
+                await AsyncStorage.setItem('refresh_token', refreshToken);
                 Alert.alert('Success', 'Account created successfully!');
                 navigation.navigate('Tab');
             } else {
-                Alert.alert('Error', 'Access token is missing in the response.');
+                Alert.alert('Error', 'Tokens are missing in the response.');
             }
         } catch (err) {
             console.error('Error during sign up:', err);
@@ -208,6 +209,7 @@ const styles = StyleSheet.create({
         marginBottom: 24,
         fontSize: 36,
         color: '#202020',
+        fontFamily: FONTFAMILY.poppins_bold,
     },
     loginText: {
         textAlign: 'center',

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     Keyboard,
     KeyboardAvoidingView,
@@ -14,10 +14,9 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Input from "../components/Input";
 import Button from "../components/Button";
-import { COLORS } from "../theme/theme";
+import { COLORS, FONTFAMILY } from "../theme/theme";
 import axios from "axios";
 import { BASE_URL } from "../../config";
-
 
 const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     const [username, setUsername] = useState<string>('');
@@ -25,6 +24,30 @@ const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     const [usernameError, setUsernameError] = useState<string>('');
     const [passwordError, setPasswordError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(false);
+    const [checkingToken, setCheckingToken] = useState<boolean>(true);
+
+    useEffect(() => {
+        const validateToken = async () => {
+            try {
+                const accessToken = await AsyncStorage.getItem('access_token');
+                if (accessToken) {
+                    const response = await axios.get(`${BASE_URL}/api/users/me/`, {
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                    });
+                    if (response.status === 200) {
+                        navigation.navigate('Tab');
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error('Error validating token:', error);
+            } finally {
+                setCheckingToken(false);
+            }
+        };
+
+        validateToken();
+    }, [navigation]);
 
     const onSignIn = async () => {
         // Reset previous errors
@@ -78,6 +101,14 @@ const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             setLoading(false);
         }
     };
+
+    if (checkingToken) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primaryBlackHex} />
+            </View>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -139,6 +170,7 @@ const styles = StyleSheet.create({
         marginBottom: 24,
         fontSize: 36,
         color: '#202020',
+        fontFamily: FONTFAMILY.poppins_bold,
     },
     signUpText: {
         textAlign: 'center',
@@ -146,6 +178,11 @@ const styles = StyleSheet.create({
     },
     signUpLink: {
         color: 'blue',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
 
